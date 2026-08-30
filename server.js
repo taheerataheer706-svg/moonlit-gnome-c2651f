@@ -129,6 +129,138 @@ app.post('/api/data/purchase',async(req,res)=>{
     res.json({ok:true,status:'delivered',balance:user.balance,request_id:rid,plan:v.name});
   }catch(e){res.status(500).json({error:e.message});}
 });
+app.listen(PORT,()=>console.log(`DAHIRU MAN D DATA running on ${PUBLIC_BASE_URL}`));
+app.get('/// ================= ADMIN AUTH =================
 
-app.get('/payment-callback.html',(req,res)=>res.sendFile(path.join(__dirname,'payment-callback.html')));
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
+
+function createAdminToken(email){
+  const payload = `${email}:${Date.now()}`;
+  const secret = ADMIN_PASSWORD || 'change-this-secret';
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+
+  return Buffer.from(`${payload}:${signature}`).toString('base64url');
+}
+
+function verifyAdminToken(token){
+  try{
+    const decoded = Buffer.from(String(token || ''), 'base64url').toString('utf8');
+    const parts = decoded.split(':');
+
+    if(parts.length < 3) return false;
+
+    const email = parts[0];
+    const timestamp = Number(parts[1]);
+    const signature = parts.slice(2).join(':');
+
+    if(!email || !Number.isFinite(timestamp)) return false;
+
+    // Token expires after 24 hours
+    if(Date.now() - timestamp > 24 * 60 * 60 * 1000) return false;
+
+    const payload = `${email}:${timestamp}`;
+    const expected = crypto
+      .createHmac('sha256', ADMIN_PASSWORD || 'change-this-secret')
+      .update(payload)
+      .digest('hex');
+
+    if(signature !== expected) return false;
+    if(email !== ADMIN_EMAIL) return false;
+
+    return true;
+  }catch{
+    return false;
+  }
+}
+
+function requireAdmin(req,res,next){
+  const auth = String(req.headers.authorization || '');
+
+  if(!auth.startsWith('Bearer ')){
+    return res.status(401).json({error:'Admin login required.'});
+  }
+
+  const token = auth.slice(7);
+
+  if(!verifyAdminToken(token)){
+    return res.status(401).json({error:'Invalid or expired admin session.'});
+  }
+
+  next();
+}
+
+app.post('/api/admin/login',(req,res)=>{
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+
+  if(!ADMIN_EMAIL || !ADMIN_PASSWORD){
+    return res.status(500).json({
+      error:'Admin credentials are not configured on the server.'
+    });
+  }
+
+  if(email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD){
+    return res.status(401).json({
+      error:'Incorrect email or password.'
+    });
+  }
+
+  const token = createAdminToken(email);
+
+  res.json({
+    ok:true,
+    token
+  });
+});
+
+app.get('/api/admin/overview',requireAdmin,(req,res)=>{
+  try{
+    const db = loadDB();
+
+    const users = Object.values(db.users || {});
+    const deposits = Object.values(db.deposits || {});
+    const purchases = Object.values(db.purchases || {});
+
+    const totalBalance = users.reduce(
+      (sum,user)=>sum + Number(user.balance || 0),0
+    );
+
+    const successfulDeposits = deposits.filter(
+      x => x.status === 'success'
+    );
+
+    const totalDeposits = successfulDeposits.reduce(
+      (sum,x)=>sum + Number(x.amount || 0),0
+    );
+
+    const totalPurchases = purchases.reduce(
+      (sum,x)=>sum + Number(x.sell || 0),0
+    );
+
+    res.json({
+      users: users.map(user=>({
+        email:user.email,
+        balance:Number(user.balance || 0),
+        transactions:(user.transactions || []).slice(0,20)
+      })),
+      stats:{
+        users:users.length,
+        balance:totalBalance,
+        deposits:totalDeposits,
+        purchases:totalPurchases
+      },
+      recentDeposits:deposits.slice(-20).reverse(),
+      recentPurchases:purchases.slice(-20).reverse()
+    });
+
+  }catch(e){
+    res.status(500).json({error:e.message});
+  }
+});
+
+// ================= END ADMIN AUTH =================payment-callback.html',(req,res)=>res.sendFile(path.join(__dirname,'payment-callback.html')));
 app.listen(PORT,()=>console.log(`DAHIRU MAN D DATA running on ${PUBLIC_BASE_URL}`));

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Dashboard - Dahiru Man D Data</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#f5f5f5;
+  color:#111;
+}
+header{
+  background:#111;
+  color:#fff;
+  padding:18px;
+}
+.wrap{
+  max-width:1100px;
+  margin:auto;
+  padding:18px;
+}
+.top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:15px;
+}
+button{
+  border:0;
+  border-radius:10px;
+  padding:11px 16px;
+  font-weight:800;
+  cursor:pointer;
+}
+.logout{
+  background:#fff;
+  color:#111;
+}
+.stats{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:14px;
+  margin:20px 0;
+}
+.card{
+  background:#fff;
+  border:1px solid #e5e5e5;
+  border-radius:16px;
+  padding:20px;
+}
+.number{
+  font-size:28px;
+  font-weight:900;
+  margin-top:8px;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+th,td{
+  text-align:left;
+  padding:12px 8px;
+  border-bottom:1px solid #eee;
+}
+.muted{
+  color:#777;
+}
+@media(max-width:750px){
+  .stats{grid-template-columns:1fr 1fr}
+  .card{overflow:auto}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<div class="wrap top">
+  <strong>DAHIRU MAN D DATA — ADMIN</strong>
+  <button class="logout" onclick="logout()">Logout</button>
+</div>
+</header>
+
+<main class="wrap">
+
+<div class="stats">
+
+  <div class="card">
+    <div class="muted">Users</div>
+    <div class="number" id="users">0</div>
+  </div>
+
+  <div class="card">
+    <div class="muted">Total Wallet Balance</div>
+    <div class="number" id="balance">₦0</div>
+  </div>
+
+  <div class="card">
+    <div class="muted">Total Deposits</div>
+    <div class="number" id="deposits">₦0</div>
+  </div>
+
+  <div class="card">
+    <div class="muted">Data Purchases</div>
+    <div class="number" id="purchases">₦0</div>
+  </div>
+
+</div>
+
+<div class="card">
+<h2>Users</h2>
+
+<table>
+<thead>
+<tr>
+<th>Email</th>
+<th>Balance</th>
+<th>Transactions</th>
+</tr>
+</thead>
+
+<tbody id="usersTable"></tbody>
+</table>
+
+</div>
+
+</main>
+
+<script>
+
+const token = localStorage.getItem('admin_token');
+
+if(!token){
+  location.href='/admin-login.html';
+}
+
+function money(n){
+  return '₦'+Number(n || 0).toLocaleString(
+    'en-NG',
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    }
+  );
+}
+
+async function loadDashboard(){
+
+  try{
+
+    const r = await fetch('/api/admin/overview',{
+      headers:{
+        Authorization:'Bearer '+token
+      }
+    });
+
+    const data = await r.json();
+
+    if(!r.ok){
+      localStorage.removeItem('admin_token');
+      location.href='/admin-login.html';
+      return;
+    }
+
+    document.getElementById('users').textContent =
+      data.stats.users;
+
+    document.getElementById('balance').textContent =
+      money(data.stats.balance);
+
+    document.getElementById('deposits').textContent =
+      money(data.stats.deposits);
+
+    document.getElementById('purchases').textContent =
+      money(data.stats.purchases);
+
+    const table =
+      document.getElementById('usersTable');
+
+    if(!data.users.length){
+
+      table.innerHTML =
+        '<tr><td colspan="3">No users yet.</td></tr>';
+
+      return;
+    }
+
+    table.innerHTML =
+      data.users.map(user=>`
+
+        <tr>
+          <td>${escapeHtml(user.email)}</td>
+          <td>${money(user.balance)}</td>
+          <td>${(user.transactions || []).length}</td>
+        </tr>
+
+      `).join('');
+
+  }catch(e){
+
+    alert('Unable to load dashboard.');
+
+  }
+}
+
+function escapeHtml(value){
+  return String(value)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
+}
+
+function logout(){
+  localStorage.removeItem('admin_token');
+  location.href='/admin-login.html';
+}
+
+loadDashboard();
+
+</script>
+
+</body>
+</html>
